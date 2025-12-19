@@ -1,0 +1,501 @@
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/HasrnXzeee/N/refs/heads/main/Image.png", true))()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local startTime = os.time()
+local startRebirths = player.leaderstats.Rebirths.Value
+local displayName = player.DisplayName
+
+-- Create Main Window
+local window = library:AddWindow("PUKSA MGA GAGO", {
+    main_color = Color3.fromRGB(0, 0, 0),
+    min_size = Vector2.new(670, 1000),
+    can_resize = true,
+})
+
+-- Main Tab
+local Main = window:AddTab("PAKAK PUKSA")
+
+local dropdown = Killer:AddDropdown("Select Pet", function(text)
+    local petsFolder = game.Players.LocalPlayer:WaitForChild("petsFolder")
+    for _, folder in pairs(petsFolder:GetChildren()) do
+        if folder:IsA("Folder") then
+            for _, pet in pairs(folder:GetChildren()) do
+                game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("unequipPet", pet)
+            end
+        end
+    end
+    task.wait(0.2)
+    local petName = text
+    local petsToEquip = {}
+    for _, pet in pairs(petsFolder.Unique:GetChildren()) do
+        if pet.Name == petName then
+            table.insert(petsToEquip, pet)
+        end
+    end
+    local maxPets = 8
+    local equippedCount = math.min(#petsToEquip, maxPets)
+    for i = 1, equippedCount do
+        game:GetService("ReplicatedStorage").rEvents.equipPetEvent:FireServer("equipPet", petsToEquip[i])
+        task.wait(0.1)
+    end
+end)
+dropdown:Add("Wild Wizard")
+dropdown:Add("Mighty Monster")
+
+Killer:AddSwitch("Auto Punch [No Animation]", function(state)
+	autoPunchNoAnim = state
+	task.spawn(function()
+		while autoPunchNoAnim do
+			local punch = LocalPlayer.Backpack:FindFirstChild("Punch") or LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+			if punch then
+				if punch.Parent ~= LocalPlayer.Character then
+					punch.Parent = LocalPlayer.Character
+				end
+				LocalPlayer.muscleEvent:FireServer("punch", "rightHand")
+				LocalPlayer.muscleEvent:FireServer("punch", "leftHand")
+			else
+				autoPunchNoAnim = false
+			end
+			task.wait(0.01)
+		end
+	end)
+end)
+
+Killer:AddSwitch("Auto Punch", function(state)
+	_G.fastHitActive = state
+	if state then
+		task.spawn(function()
+			while _G.fastHitActive do
+				local punch = LocalPlayer.Backpack:FindFirstChild("Punch")
+				if punch then
+					punch.Parent = LocalPlayer.Character
+					if punch:FindFirstChild("attackTime") then
+						punch.attackTime.Value = 0
+					end
+				end
+				task.wait(0.1)
+			end
+		end)
+		task.spawn(function()
+			while _G.fastHitActive do
+				local punch = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+				if punch then
+					punch:Activate()
+				end
+				task.wait(0.1)
+			end
+		end)
+	else
+		local punch = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+		if punch then
+			punch.Parent = LocalPlayer.Backpack
+		end
+	end
+end)
+
+Killer:AddSwitch("Fast Punch", function(state)
+	_G.autoPunchActive = state
+	if state then
+		task.spawn(function()
+			while _G.autoPunchActive do
+				local punch = LocalPlayer.Backpack:FindFirstChild("Punch")
+				if punch then
+					punch.Parent = LocalPlayer.Character
+					if punch:FindFirstChild("attackTime") then
+						punch.attackTime.Value = 0
+					end
+				end
+				task.wait()
+			end
+		end)
+		task.spawn(function()
+			while _G.autoPunchActive do
+				local punch = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+				if punch then
+					punch:Activate()
+				end
+				task.wait()
+			end
+		end)
+	else
+		local punch = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Punch")
+		if punch then
+			punch.Parent = LocalPlayer.Backpack
+		end
+	end
+end)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterPack = game:GetService("StarterPack")
+local lighting = game:GetService("Lighting")
+local LocalPlayer = Players.LocalPlayer
+
+-- State & connection tracking
+local comboActive = false
+local connections = {} -- map keys -> RBXScriptConnection / task.thread
+local loops = {} -- store coroutine/thread references to allow safe stopping
+
+local function safeDisconnect(key)
+	local conn = connections[key]
+	if not conn then return end
+	pcall(function()
+		if typeof(conn) == "RBXScriptConnection" and conn.Disconnect then
+			conn:Disconnect()
+		elseif type(conn) == "table" and conn.Disconnect then
+			conn:Disconnect()
+		end
+	end)
+	connections[key] = nil
+end
+
+local function stopLoops()
+	for k, thr in pairs(loops) do
+		loops[k] = nil
+	end
+end
+
+local function cleanupAll()
+	_G.AutoPunchToggle = false
+	_G.AutoProteinEgg = false
+	getgenv().AntiFlyActive = false
+
+	for k, _ in pairs(connections) do
+		safeDisconnect(k)
+	end
+	connections = {}
+	stopLoops()
+end
+
+local function respawnPlayer()
+	pcall(function()
+		if LocalPlayer and LocalPlayer:IsA("Player") then
+			if pcall(function() LocalPlayer:LoadCharacter() end) then return end
+			pcall(function()
+				local StarterGui = game:GetService("StarterGui")
+				StarterGui:SetCore("ResetButtonCallback", true)
+			end)
+		end
+	end)
+end
+
+local function applySizeNaN()
+	pcall(function()
+		local events = ReplicatedStorage:FindFirstChild("rEvents")
+		if events then
+			local change = events:FindFirstChild("changeSpeedSizeRemote")
+			if change and change.InvokeServer then
+				pcall(function()
+					change:InvokeServer("changeSize", 0/0)
+				end)
+			end
+		end
+	end)
+end
+
+local function startAutoPunch()
+	_G.AutoPunchToggle = true
+	local id = "AutoPunch"
+	loops[id] = true
+	task.spawn(function()
+		local backpack = LocalPlayer:WaitForChild("Backpack")
+		local hand = "rightHand"
+		local function getMuscleEvent() return LocalPlayer:FindFirstChild("muscleEvent") end
+
+		safeDisconnect("CharAddedForAutoPunch")
+		connections.CharAddedForAutoPunch = LocalPlayer.CharacterAdded:Connect(function(char)
+			if comboActive and connections.HumanoidResetHook == nil then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					safeDisconnect("ResetDeath")
+					connections.ResetDeath = hum.Died:Connect(function()
+						task.wait(0.5)
+						respawnPlayer()
+					end)
+				end
+			end
+		end)
+
+		safeDisconnect("BackpackChildForAutoPunch")
+		connections.BackpackChildForAutoPunch = LocalPlayer.ChildAdded:Connect(function(child)
+			if child.Name == "Backpack" then
+				backpack = child
+			end
+		end)
+
+		while _G.AutoPunchToggle and loops[id] do
+			local muscleEvent = getMuscleEvent()
+			local character = LocalPlayer.Character
+			if character and character:FindFirstChild("Humanoid") and muscleEvent then
+				local punchEquipped = character:FindFirstChild("Punch")
+				local punchInBackpack = (LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack:FindFirstChild("Punch"))
+				if not punchEquipped and punchInBackpack then
+					pcall(function() character.Humanoid:EquipTool(punchInBackpack) end)
+				end
+				pcall(function() muscleEvent:FireServer("punch", hand) end)
+			end
+			task.wait(0.0001)
+		end
+	end)
+end
+
+local function startProteinEggLogic()
+	_G.AutoProteinEgg = true
+	local id = "ProteinEgg"
+	loops[id] = true
+	task.spawn(function()
+		local toolName = "Protein Egg"
+		local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+		local function restoreVisibility(tool)
+			for _, part in ipairs(tool:GetDescendants()) do
+				if part:IsA("BasePart") then
+					pcall(function() part.Transparency = 0 end)
+					pcall(function() part.LocalTransparencyModifier = 0 end)
+				end
+			end
+		end
+
+		local function findTool()
+			local tool = (LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack:FindFirstChild(toolName))
+			if tool then return tool end
+			tool = StarterPack:FindFirstChild(toolName)
+			if tool then return tool end
+			tool = ReplicatedStorage:FindFirstChild(toolName)
+			return tool
+		end
+
+		local function forceEquip(tool)
+			if not (character and character:FindFirstChild("Humanoid")) then return end
+			pcall(function() character.Humanoid:EquipTool(tool) end)
+			task.wait(0.1)
+			if not character:FindFirstChild(toolName) then
+				pcall(function() tool.Parent = character end)
+				task.wait(0.1)
+			end
+			local equipped = character:FindFirstChild(toolName)
+			if equipped then restoreVisibility(equipped) end
+		end
+
+		local function sanitizeTool(tool)
+			for _, desc in ipairs(tool:GetDescendants()) do
+				if desc:IsA("Script") then
+					pcall(function() desc:Destroy() end)
+				elseif desc:IsA("LocalScript") then
+					pcall(function() desc.Disabled = true end)
+				end
+				if desc:IsA("RemoteEvent") then
+					pcall(function() desc.FireServer = function() end end)
+				end
+			end
+		end
+
+		local function equipIfNeeded()
+			if not _G.AutoProteinEgg then return end
+			character = LocalPlayer.Character
+			local equipped = character and character:FindFirstChild(toolName)
+			local needEquip = false
+			if not equipped then
+				needEquip = true
+			else
+				for _, part in ipairs(equipped:GetDescendants()) do
+					if part:IsA("BasePart") and part.Transparency > 0 then
+						needEquip = true
+						break
+					end
+				end
+			end
+			if needEquip then
+				local tool = findTool()
+				if tool then
+					if tool.Parent ~= (LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack) then
+						local clone = tool:Clone()
+						clone.Parent = LocalPlayer:FindFirstChild("Backpack") or LocalPlayer
+						tool = clone
+					end
+					sanitizeTool(tool)
+					forceEquip(tool)
+				end
+			end
+		end
+
+		local function monitorToolContainer(container)
+			if not container then return end
+			for _, tool in ipairs(container:GetChildren()) do
+				if tool:IsA("Tool") and tool.Name == toolName then
+					sanitizeTool(tool)
+				end
+			end
+			local conn = container.ChildAdded:Connect(function(child)
+				if child:IsA("Tool") and child.Name == toolName then
+					task.defer(function()
+						sanitizeTool(child)
+					end)
+				end
+			end)
+			return conn
+		end
+
+		safeDisconnect("MonitorBackpack")
+		safeDisconnect("MonitorCharacter")
+		connections.MonitorBackpack = monitorToolContainer(LocalPlayer:FindFirstChild("Backpack") or LocalPlayer:WaitForChild("Backpack"))
+		connections.MonitorCharacter = monitorToolContainer(LocalPlayer.Character)
+
+		safeDisconnect("CharacterAddedProtein")
+		connections.CharacterAddedProtein = LocalPlayer.CharacterAdded:Connect(function(char)
+			character = char
+			task.wait(1)
+			safeDisconnect("MonitorBackpack")
+			safeDisconnect("MonitorCharacter")
+			connections.MonitorBackpack = monitorToolContainer(LocalPlayer:FindFirstChild("Backpack") or LocalPlayer:WaitForChild("Backpack"))
+			connections.MonitorCharacter = monitorToolContainer(char)
+			equipIfNeeded()
+		end)
+
+		safeDisconnect("BackpackChildProtein")
+		connections.BackpackChildProtein = LocalPlayer:WaitForChild("Backpack").ChildAdded:Connect(function(child)
+			if _G.AutoProteinEgg and child.Name == toolName then
+				task.wait(0.2)
+				equipIfNeeded()
+			end
+		end)
+
+		while _G.AutoProteinEgg and loops[id] do
+			pcall(equipIfNeeded)
+			task.wait(0.5)
+		end
+	end)
+end
+
+local function startAntiFly()
+	getgenv().AntiFlyActive = true
+	safeDisconnect("AntiFly")
+	connections.AntiFly = RunService.Heartbeat:Connect(function()
+		local char = LocalPlayer.Character
+		if not char then return end
+		local root = char:FindFirstChild("HumanoidRootPart")
+		if not root then return end
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+		local ray = Ray.new(root.Position, Vector3.new(0, -500, 0))
+		local hit, position = workspace:FindPartOnRay(ray, char)
+		if hit then
+			local groundY = position.Y
+			local currentY = root.Position.Y
+			if currentY - groundY > 0.5 then
+				root.CFrame = CFrame.new(root.Position.X, groundY + 0.5, root.Position.Z)
+				humanoid.PlatformStand = true
+				humanoid.PlatformStand = false
+			end
+		end
+	end)
+end
+
+local function softAntiLagAndSunset()
+	pcall(function()
+		local classesToClean = {["ParticleEmitter"]=true, ["Trail"]=true, ["Smoke"]=true, ["Fire"]=true}
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj:IsA("Model") or obj:IsA("Part") then
+				for _, sub in ipairs(obj:GetChildren()) do
+					if classesToClean[sub.ClassName] then
+						pcall(function() sub:Destroy() end)
+					end
+				end
+			end
+		end
+		local terrain = workspace:FindFirstChildOfClass("Terrain")
+		if terrain then
+			terrain.WaterWaveSize = 0
+			terrain.WaterReflectance = 0
+			terrain.WaterTransparency = 1
+		end
+	end)
+	pcall(function()
+		lighting.ClockTime = 18
+		lighting.Brightness = 1.5
+		lighting.OutdoorAmbient = Color3.fromRGB(150, 100, 80)
+		lighting.FogColor = Color3.fromRGB(200, 120, 100)
+		lighting.FogEnd = 500
+		for _, v in ipairs(lighting:GetChildren()) do
+			if v:IsA("Sky") then
+				pcall(function() v:Destroy() end)
+			end
+		end
+		local sky = Instance.new("Sky")
+		sky.Name = "SunsetSky"
+		sky.SkyboxBk = "rbxassetid://131889017"
+		sky.SkyboxDn = "rbxassetid://131889017"
+		sky.SkyboxFt = "rbxassetid://131889017"
+		sky.SkyboxLf = "rbxassetid://131889017"
+		sky.SkyboxRt = "rbxassetid://131889017"
+		sky.SkyboxUp = "rbxassetid://131889017"
+		sky.SunAngularSize = 10
+		sky.MoonAngularSize = 0
+		sky.SunTextureId = "rbxassetid://644432992"
+		sky.Parent = lighting
+	end)
+end
+
+local function hookResetOnCharacter(char)
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	safeDisconnect("ResetDeath")
+	connections.ResetDeath = humanoid.Died:Connect(function()
+		task.wait(0.5)
+		respawnPlayer()
+	end)
+end
+
+local function startTinyIslandLoop()
+	local id = "TinyIslandLoop"
+	loops[id] = true
+	task.spawn(function()
+		local teleportPos = CFrame.new(-37.1, 9.2, 1919)
+		while comboActive and loops[id] do
+			pcall(function()
+				local char = LocalPlayer.Character
+				if char and char:FindFirstChild("HumanoidRootPart") then
+					char.HumanoidRootPart.CFrame = teleportPos
+				end
+			end)
+			task.wait(0.2)
+		end
+	end)
+end
+
+-- ðŸ”¹ Killer:AddSwitch version
+Killer:AddSwitch("OP Punch When Dead | Combo", function(enabled)
+	comboActive = enabled
+	cleanupAll()
+
+	if enabled then
+		applySizeNaN()
+		startAutoPunch()
+		startProteinEggLogic()
+		startAntiFly()
+		softAntiLagAndSunset()
+		startTinyIslandLoop()
+
+		if LocalPlayer.Character then
+			hookResetOnCharacter(LocalPlayer.Character)
+		end
+		safeDisconnect("CharacterAddedReset")
+		connections.CharacterAddedReset = LocalPlayer.CharacterAdded:Connect(function(char)
+			task.wait(0.5)
+			hookResetOnCharacter(char)
+		end)
+	end
+end)
+
+Killer:AddButton("NaN Size", function()
+    local args = {"changeSize", 0/0}
+    game:GetService("ReplicatedStorage"):WaitForChild("rEvents"):WaitForChild("changeSpeedSizeRemote"):InvokeServer(unpack(args))
+end)
+
+local button = Killer:AddButton("Remove Punch Anim", function()
+    local blockedAnimations = {
+        ["rbxassetid://3638729053"] = true,
+        ["rbxassetid://3638767427"] = true,
+    }
