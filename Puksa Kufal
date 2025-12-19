@@ -15,7 +15,6 @@ local window = library:AddWindow("PUKSA MGA GAGO", {
 
 -- Main Tab
 local Main = window:AddTab("PAKAK PUKSA")
-
 local dropdown = Killer:AddDropdown("Select Pet", function(text)
     local petsFolder = game.Players.LocalPlayer:WaitForChild("petsFolder")
     for _, folder in pairs(petsFolder:GetChildren()) do
